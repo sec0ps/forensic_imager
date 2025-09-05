@@ -1,6 +1,6 @@
 # Forensic Drive Imaging Tool
 
-A comprehensive Python script for creating forensic images of hard drives with integrity verification and professional documentation.
+A Python script for creating forensic images of hard drives with integrity verification and professional documentation.
 
 ## Features
 
