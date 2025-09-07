@@ -81,11 +81,14 @@ class ForensicDataRecovery:
             'exiftool': {'package': 'libimage-exiftool-perl', 'version_cmd': ['exiftool', '-ver']}
         }
 
+        # Check for tkinter separately since it's a Python module
+        python_packages = ['python3-tk']
+
         missing_packages = []
 
         print("Checking dependencies...")
 
-        # Check which tools are missing
+        # Check command-line tools
         for tool, config in required_tools.items():
             try:
                 result = subprocess.run(config['version_cmd'], capture_output=True, check=True)
@@ -93,6 +96,14 @@ class ForensicDataRecovery:
             except (subprocess.CalledProcessError, FileNotFoundError):
                 print(f"✗ {tool} is missing (package: {config['package']})")
                 missing_packages.append(config['package'])
+
+        # Check tkinter by trying to import it
+        try:
+            import tkinter as tk
+            print("✓ tkinter is available")
+        except ImportError:
+            print("✗ tkinter is missing (package: python3-tk)")
+            missing_packages.extend(python_packages)
 
         if missing_packages:
             print(f"\nMissing packages: {', '.join(missing_packages)}")
@@ -121,6 +132,15 @@ class ForensicDataRecovery:
                         print(f"✗ {tool} installation failed")
                         self.root.destroy()
                         sys.exit(1)
+
+                # Verify tkinter installation
+                try:
+                    import tkinter as tk
+                    print("✓ tkinter verified")
+                except ImportError:
+                    print("✗ tkinter installation failed - please restart the application")
+                    self.root.destroy()
+                    sys.exit(1)
 
                 print("✓ All dependencies installed and verified")
 
@@ -338,22 +358,26 @@ class ForensicDataRecovery:
 
             # First, get partition information from the device
             try:
-                # Use testdisk to list partitions
                 testdisk_result = subprocess.run(['testdisk', '/list', self.source_device],
                                             capture_output=True, text=True, timeout=30)
                 self.log(f"Testdisk partition info: {testdisk_result.stdout[:500]}")
             except Exception as e:
                 self.log(f"Could not get partition info: {e}", "WARNING")
 
-            # Run photorec with simplified command structure that works
+            # Create a photorec configuration file for automated operation
+            config_file = os.path.join(temp_dir, "photorec.cfg")
+            with open(config_file, 'w') as f:
+                f.write("fileopt,everything,enable\n")
+                f.write("search\n")
+
+            # Run photorec with working command structure
             photorec_cmd = [
                 'photorec',
                 '/debug',
                 '/cmd',
                 self.source_device,
-                'options,paranoid,keep_corrupted_file,enable',
+                f'{temp_dir}',
                 'fileopt,everything,enable',
-                f'destination,{temp_dir}',
                 'search'
             ]
 
