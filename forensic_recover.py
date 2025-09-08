@@ -139,6 +139,7 @@ class ForensicDataRecovery:
 
         ttk.Button(options_frame, text="Scan for Files", command=self.start_scan).pack(side=tk.LEFT, padx=5)
         ttk.Button(options_frame, text="Recover Selected", command=self.recover_selected).pack(side=tk.LEFT, padx=5)
+        ttk.Button(options_frame, text="Refresh View", command=self.refresh_view).pack(side=tk.LEFT, padx=5)  # NEW REFRESH BUTTON
 
         # View mode selection
         ttk.Label(options_frame, text="View:").pack(side=tk.LEFT, padx=(20,5))
@@ -182,6 +183,14 @@ class ForensicDataRecovery:
         self.log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
         ttk.Button(log_frame, text="Save Log", command=self.save_log).pack(pady=5)
+
+    def refresh_view(self):
+        """Refresh the file display"""
+        if hasattr(self, 'recovered_files') and self.recovered_files:
+            self.populate_file_list(self.recovered_files)
+            self.log("File display refreshed")
+        else:
+            self.log("No files to refresh - run a scan first")
 
     def setup_table_view(self, parent):
         """Setup table view for files"""
@@ -227,9 +236,15 @@ class ForensicDataRecovery:
         if self.view_mode.get() == "table":
             self.tree.pack_forget()
             self.table.pack(fill=tk.BOTH, expand=True)
+            # Refresh table display
+            if hasattr(self, 'recovered_files') and self.recovered_files:
+                self.populate_file_list(self.recovered_files)
         else:
             self.table.pack_forget()
             self.tree.pack(fill=tk.BOTH, expand=True)
+            # Refresh tree display
+            if hasattr(self, 'recovered_files') and self.recovered_files:
+                self.populate_tree_view(self.recovered_files)
 
     def select_device(self):
         """Select a device for recovery"""
@@ -537,33 +552,68 @@ class ForensicDataRecovery:
                 file_info['size'],
                 file_info['type'],
                 file_info['confidence'],
-                'Unknown'
+                file_info.get('modified', 'Unknown')
             ), tags=(file_info['path'],))
+
+        # Force GUI refresh and make table visible
+        self.table.update_idletasks()
+        self.root.update_idletasks()
+
+        # Ensure table view is active
+        if self.view_mode.get() == "table":
+            self.tree.pack_forget()
+            self.table.pack(fill=tk.BOTH, expand=True)
 
         self.log(f"Found {len(files)} recoverable files")
 
-        # Update tree view if needed
+        # Update tree view with original file paths if available
         if self.view_mode.get() == "tree":
             self.populate_tree_view(files)
 
     def populate_tree_view(self, files):
-        """Populate tree view with files organized by directory"""
+        """Populate tree view with files organized by original directory path"""
         for item in self.tree.get_children():
             self.tree.delete(item)
 
-        # Group files by directory
+        # Try to extract original paths from file recovery information
         dirs = {}
-        for file_info in files:
-            dirname = os.path.dirname(file_info.get('path', '/unknown'))
-            if dirname not in dirs:
-                dirs[dirname] = []
-            dirs[dirname].append(file_info)
 
-        # Populate tree
+        for file_info in files:
+            # Try to determine original path from various sources
+            original_path = "Unknown Location"
+
+            # Check if we can extract path info from file metadata or recovery logs
+            try:
+                # For forensic recovery, files are often organized by type in subdirectories
+                recovery_path = file_info.get('path', '')
+                if '/htm/' in recovery_path:
+                    original_path = "Web Files"
+                elif '/zip/' in recovery_path:
+                    original_path = "Archives"
+                elif '/png/' in recovery_path or '/jpg/' in recovery_path:
+                    original_path = "Images"
+                elif '/pdf/' in recovery_path:
+                    original_path = "Documents"
+                else:
+                    # Use the recovery subdirectory as a hint
+                    path_parts = recovery_path.split('/')
+                    if len(path_parts) > 2:
+                        original_path = f"Recovered {path_parts[-2].upper()} Files"
+                    else:
+                        original_path = "Unclassified Files"
+            except Exception:
+                original_path = "Unknown Location"
+
+            if original_path not in dirs:
+                dirs[original_path] = []
+            dirs[original_path].append(file_info)
+
+        # Populate tree with organized structure
         for dirname, dir_files in dirs.items():
-            dir_node = self.tree.insert('', tk.END, text=dirname, open=True)
+            dir_node = self.tree.insert('', tk.END, text=f"{dirname} ({len(dir_files)} files)", open=True)
             for file_info in dir_files:
-                self.tree.insert(dir_node, tk.END, text=file_info['filename'], tags=(file_info['path'],))
+                file_display = f"{file_info['filename']} ({file_info['size']}) - {file_info['type']}"
+                self.tree.insert(dir_node, tk.END, text=file_display, tags=(file_info['path'],))
 
     def on_table_click(self, event):
         """Handle table click for checkbox selection"""
