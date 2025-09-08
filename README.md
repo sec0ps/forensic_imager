@@ -1,46 +1,162 @@
-# Forensic Drive Imaging Tool
+# Forensic Tools Suite
 
-A Python script for creating forensic images of hard drives with integrity verification and professional documentation.
+A Python-based suite for digital forensics operations including drive imaging and data recovery with chain of custody support.
+
+## Tools Included
+
+### 1. Forensic Drive Imaging Tool (`forensic_imager.py`)
+Professional-grade disk imaging tool for creating forensically sound copies of storage devices.
+
+### 2. Forensic Data Recovery Tool (`forensic_recovery.py`) 
+GUI-based data recovery tool for extracting deleted files and recovering data from damaged filesystems.
 
 ## Features
 
-- **Automated Setup**: Installs required dependencies (ddrescue, pv, forensic tools)
-- **Interactive Device Selection**: Safe drive selection with capacity verification
-- **Multiple Imaging Methods**: dd, ddrescue, dd+pv with progress monitoring
-- **SHA-256 Verification**: Automatic integrity checking with checksum comparison
-- **Professional Documentation**: Generates standardized imaging logs for legal compliance
-- **Safety Checks**: Prevents accidental data loss with multiple confirmations
+### Drive Imaging Tool
+- **Automated dependency installation** - Installs required tools (ddrescue, pv, etc.)
+- **Multiple imaging methods** with progress monitoring:
+  - DD with PV - Standard imaging with real-time progress
+  - DDrescue with PV - Recovery imaging for damaged drives
+- **SHA-256 integrity verification** - Automatic checksum validation
+- **Professional documentation** - Generates standardized forensic logs
+- **Enhanced safety checks** - Prevents data loss with verification steps
+- **Smart unmounting** - Automatically handles mounted filesystems
+
+### Data Recovery Tool
+- **Multiple recovery engines** - Uses foremost, scalpel, and other tools
+- **GUI interface** - User-friendly tkinter-based interface
+- **Dual view modes** - Table and tree organization of recovered files
+- **File type detection** - Automatic classification of recovered data
+- **Search capabilities** - Find files by name or content
+- **SHA-256 verification** - Hash verification of recovered files
+- **Professional logging** - Complete audit trail with metadata preservation
 
 ## Requirements
 
-- Linux operating system
+### System Requirements
+- Linux operating system (Ubuntu/Debian preferred)
 - Root/sudo privileges
-- Python 3.6+
-- Available USB ports for source and destination drives
+- Python 3.6 or higher
+- Available USB ports for external drives
 
-## Quick Start
+### Dependencies
+Both tools automatically install required dependencies:
+- **testdisk** (includes photorec)
+- **foremost** (primary recovery engine)
+- **file** (MIME type detection)
+- **pv** (progress monitoring)
+- **poppler-utils** (PDF metadata)
+- **libimage-exiftool-perl** (image metadata)
+- **python3-tk** (GUI framework)
+
+## Installation
 
 ```bash
-# Clone and run
+# Clone the repository
 git clone <repository-url>
-cd forensic-drive-imaging
+cd forensic-tools
+
+# Make scripts executable
 chmod +x forensic_imager.py
-sudo python3 forensic_imager.py
+chmod +x forensic_recovery.py
 ```
 
 ## Usage
 
-1. **Run with root privileges** - Required for low-level drive access
-2. **Connect drives** - Source drive to image and destination drive
-3. **Follow prompts** - Script guides through device selection and method choice
-4. **Wait for completion** - Imaging can take several hours for large drives
-5. **Review documentation** - Professional log generated automatically
+### Drive Imaging
+```bash
+# Run with root privileges (required)
+sudo python3 forensic_imager.py
+```
+
+**Workflow:**
+1. **Dependency check** - Automatically installs missing tools
+2. **Case information** - Enter operator details and case number
+3. **Device selection** - Choose source and destination drives
+4. **Safety verification** - Automatic capacity and mount checks
+5. **Imaging method** - Select DD or DDrescue (both include progress monitoring)
+6. **Confirmation** - Final verification before imaging begins
+7. **Imaging process** - Real-time progress with pv monitoring
+8. **Integrity verification** - SHA-256 checksum comparison
+9. **Documentation** - Professional log generation
+
+### Data Recovery
+```bash
+# Run with root privileges (recommended)
+sudo python3 forensic_recovery.py
+```
+
+**Workflow:**
+1. **Source selection** - Choose device or image file
+2. **Scan for files** - Automated recovery using foremost/scalpel
+3. **File browsing** - View recovered files in table or tree format
+4. **Search and filter** - Find specific files or content
+5. **Selection** - Choose files for recovery
+6. **Recovery process** - Copy files with hash verification
+7. **Documentation** - JSON log with complete metadata
 
 ## Output Files
 
+### Drive Imaging
 - **imaging_log_YYYYMMDD_HHMMSS.txt** - Official forensic documentation
-- **Checksum files** - SHA-256 verification records
-- **Recovery logs** - DDrescue operation details (if applicable)
+- **Checksum verification** - SHA-256 hash comparison results
+- **Error logs** - Complete audit trail of operations
+
+### Data Recovery
+- **recovery_DEVICE_TIMESTAMP/** - Recovered files directory
+- **recovery_log.json** - Detailed recovery documentation with metadata
+- **Operation logs** - Complete session history
+
+## Professional Features
+
+### Legal Compliance
+- **Chain of custody** documentation templates
+- **Standardized logging** formats for court admissibility
+- **Integrity verification** with cryptographic hashing
+- **Comprehensive audit trails** for all operations
+
+### Safety Features
+- **Write-blocking behavior** - Read-only recovery operations
+- **Multiple confirmations** - Prevents accidental data loss
+- **Automatic unmounting** - Handles mounted filesystems safely
+- **Capacity verification** - Ensures adequate destination space
+
+## Use Cases
+
+- **Digital forensics investigations**
+- **Evidence preservation and analysis**
+- **Data recovery operations**
+- **System backup and migration**
+- **Incident response activities**
+- **Computer forensics training**
+
+## Important Notes
+
+### Legal Requirements
+- Obtain proper authorization before imaging any device
+- Maintain chain of custody documentation
+- Comply with applicable laws and regulations
+- Document all forensic procedures thoroughly
+
+### Technical Considerations
+- **USB 3.0 recommended** for faster transfer speeds
+- **Large operations** can take several hours
+- **Verify checksums** before considering imaging complete
+- **Use write-blockers** for evidence preservation when possible
+
+## Troubleshooting
+
+### Common Issues
+- **Permission errors** - Ensure running with sudo privileges
+- **Device not found** - Check USB connections and device recognition
+- **Slow performance** - Use USB 3.0 ports and high-speed devices
+- **Mount conflicts** - Tools automatically handle unmounting
+
+### Getting Help
+- Check log files for detailed error information
+- Verify all dependencies are properly installed
+- Ensure adequate free space for recovery operations
+- Review device compatibility and connection status
 
 ## Legal Notice
 
