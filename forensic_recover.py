@@ -74,84 +74,45 @@ class ForensicDataRecovery:
 
     def check_dependencies(self):
         """Check and automatically install required tools"""
-        required_tools = {
-            'testdisk': {'package': 'testdisk', 'version_cmd': ['testdisk', '--version']},
-            'file': {'package': 'file', 'version_cmd': ['file', '--version']},
-            'pdfinfo': {'package': 'poppler-utils', 'version_cmd': ['pdfinfo', '-v']},
-            'exiftool': {'package': 'libimage-exiftool-perl', 'version_cmd': ['exiftool', '-ver']}
-        }
+        tools = [
+            ('testdisk', 'testdisk', ['testdisk', '--version']),
+            ('file', 'file', ['file', '--version']),
+            ('pdfinfo', 'poppler-utils', ['pdfinfo', '-v']),
+            ('exiftool', 'libimage-exiftool-perl', ['exiftool', '-ver']),
+            ('foremost', 'foremost', ['foremost', '-V'])
+        ]
 
-        # Check for tkinter separately since it's a Python module
-        python_packages = ['python3-tk']
+        missing = []
 
-        missing_packages = []
-
-        print("Checking dependencies...")
-
-        # Check command-line tools
-        for tool, config in required_tools.items():
+        # Check tools
+        for name, package, cmd in tools:
             try:
-                result = subprocess.run(config['version_cmd'], capture_output=True, check=True)
-                print(f"✓ {tool} is available")
+                subprocess.run(cmd, capture_output=True, check=True)
+                print(f"✓ {name}")
             except (subprocess.CalledProcessError, FileNotFoundError):
-                print(f"✗ {tool} is missing (package: {config['package']})")
-                missing_packages.append(config['package'])
+                print(f"✗ {name}")
+                missing.append(package)
 
-        # Check tkinter by trying to import it
+        # Check tkinter
         try:
-            import tkinter as tk
-            print("✓ tkinter is available")
+            import tkinter
+            print("✓ tkinter")
         except ImportError:
-            print("✗ tkinter is missing (package: python3-tk)")
-            missing_packages.extend(python_packages)
+            print("✗ tkinter")
+            missing.append('python3-tk')
 
-        if missing_packages:
-            print(f"\nMissing packages: {', '.join(missing_packages)}")
-            print("Attempting to install missing dependencies...")
-
+        # Install missing packages
+        if missing:
+            print(f"\nInstalling: {' '.join(missing)}")
             try:
-                # Update package lists
-                print("Updating package lists...")
-                subprocess.run(['apt', 'update'], capture_output=True, text=True, check=True)
-                print("✓ Package lists updated")
-
-                # Install missing packages
-                install_cmd = ['apt', 'install', '-y'] + missing_packages
-                print(f"Installing: {' '.join(missing_packages)}")
-
-                subprocess.run(install_cmd, capture_output=True, text=True, check=True)
-                print("✓ Dependencies installed successfully")
-
-                # Verify installation with correct version commands
-                print("Verifying installation...")
-                for tool, config in required_tools.items():
-                    try:
-                        subprocess.run(config['version_cmd'], capture_output=True, check=True)
-                        print(f"✓ {tool} verified")
-                    except (subprocess.CalledProcessError, FileNotFoundError):
-                        print(f"✗ {tool} installation failed")
-                        self.root.destroy()
-                        sys.exit(1)
-
-                # Verify tkinter installation
-                try:
-                    import tkinter as tk
-                    print("✓ tkinter verified")
-                except ImportError:
-                    print("✗ tkinter installation failed - please restart the application")
-                    self.root.destroy()
-                    sys.exit(1)
-
-                print("✓ All dependencies installed and verified")
-
-            except subprocess.CalledProcessError as e:
-                print(f"✗ Failed to install dependencies: {e}")
-                print(f"Please manually install: sudo apt install {' '.join(missing_packages)}")
-                self.root.destroy()
+                subprocess.run(['apt', 'update'], capture_output=True, check=True)
+                subprocess.run(['apt', 'install', '-y'] + missing, capture_output=True, check=True)
+                print("✓ Installation complete")
+            except subprocess.CalledProcessError:
+                print(f"✗ Installation failed. Run: sudo apt install {' '.join(missing)}")
                 sys.exit(1)
-
         else:
-            print("✓ All dependencies are already installed")
+            print("✓ All dependencies available")
 
     def setup_gui(self):
         """Setup the GUI interface"""
@@ -346,7 +307,7 @@ class ForensicDataRecovery:
         threading.Thread(target=self.scan_files, daemon=True).start()
 
     def scan_files(self):
-        """Scan for recoverable files using photorec - REAL IMPLEMENTATION"""
+        """Scan for recoverable files using foremost - REAL IMPLEMENTATION"""
         try:
             # Create temporary directory for scan results
             temp_dir = tempfile.mkdtemp(prefix="forensic_scan_")
@@ -356,7 +317,7 @@ class ForensicDataRecovery:
             # Update progress
             self.root.after(0, lambda: self.progress_var.set(10))
 
-            # First, get partition information from the device
+            # Get partition information
             try:
                 testdisk_result = subprocess.run(['testdisk', '/list', self.source_device],
                                             capture_output=True, text=True, timeout=30)
@@ -364,47 +325,72 @@ class ForensicDataRecovery:
             except Exception as e:
                 self.log(f"Could not get partition info: {e}", "WARNING")
 
-            # Create a photorec configuration file for automated operation
-            config_file = os.path.join(temp_dir, "photorec.cfg")
-            with open(config_file, 'w') as f:
-                f.write("fileopt,everything,enable\n")
-                f.write("search\n")
+            # Use foremost for file recovery
+            self.log("Using foremost for file recovery...")
 
-            # Run photorec with working command structure
-            photorec_cmd = [
-                'photorec',
-                '/debug',
-                '/cmd',
-                self.source_device,
-                f'{temp_dir}',
-                'fileopt,everything,enable',
-                'search'
-            ]
-
-            self.log(f"Running: {' '.join(photorec_cmd)}")
-
-            # Execute photorec with timeout
             try:
-                result = subprocess.run(photorec_cmd,
+                foremost_cmd = [
+                    'foremost',
+                    '-v',           # verbose
+                    '-t', 'all',    # recover all file types
+                    '-i', self.source_device,  # input device
+                    '-o', temp_dir  # output directory
+                ]
+
+                self.log(f"Running: {' '.join(foremost_cmd)}")
+
+                # Fix UTF-8 error by handling binary output properly
+                result = subprocess.run(foremost_cmd,
                                     capture_output=True,
-                                    text=True,
-                                    timeout=300,
-                                    cwd=temp_dir)
+                                    text=False,  # Changed to handle binary output
+                                    timeout=300)
 
-                self.log(f"Photorec exit code: {result.returncode}")
-                if result.stdout:
-                    self.log(f"Photorec stdout: {result.stdout[:1000]}")
-                if result.stderr:
-                    self.log(f"Photorec stderr: {result.stderr[:1000]}")
+                self.log(f"Foremost exit code: {result.returncode}")
 
-                # Even if exit code is not 0, photorec might have found files
-                if result.returncode != 0:
-                    self.log(f"Photorec completed with exit code {result.returncode} (may still have recovered files)", "WARNING")
+                # Safely decode output with error handling
+                try:
+                    stdout_text = result.stdout.decode('utf-8', errors='replace')
+                    if stdout_text:
+                        self.log(f"Foremost stdout: {stdout_text[:1000]}")
+                except Exception:
+                    self.log("Foremost stdout contained binary data")
+
+                try:
+                    stderr_text = result.stderr.decode('utf-8', errors='replace')
+                    if stderr_text:
+                        self.log(f"Foremost stderr: {stderr_text[:1000]}")
+                except Exception:
+                    self.log("Foremost stderr contained binary data")
 
             except subprocess.TimeoutExpired:
-                self.log("Photorec scan timed out - checking for partial results", "WARNING")
-            except Exception as e:
-                self.log(f"Photorec execution error: {e}", "ERROR")
+                self.log("Foremost scan timed out - checking for partial results", "WARNING")
+            except FileNotFoundError:
+                self.log("Foremost not found, trying scalpel...", "WARNING")
+
+                # Try scalpel as alternative
+                try:
+                    scalpel_cmd = [
+                        'scalpel',
+                        '-b',           # carve files
+                        '-o', temp_dir, # output directory
+                        self.source_device
+                    ]
+
+                    self.log(f"Running: {' '.join(scalpel_cmd)}")
+
+                    result = subprocess.run(scalpel_cmd,
+                                        capture_output=True,
+                                        text=True,
+                                        timeout=300)
+
+                    self.log(f"Scalpel exit code: {result.returncode}")
+                    if result.stdout:
+                        self.log(f"Scalpel stdout: {result.stdout[:500]}")
+
+                except Exception as scalpel_error:
+                    self.log(f"Scalpel also failed: {scalpel_error}", "ERROR")
+            except Exception as recovery_error:
+                self.log(f"Recovery error: {recovery_error}", "ERROR")
 
             self.root.after(0, lambda: self.progress_var.set(70))
 
@@ -413,118 +399,115 @@ class ForensicDataRecovery:
             self.log(f"Scanning directory: {temp_dir}")
 
             if os.path.exists(temp_dir):
-                # Look for files in all subdirectories
                 file_count = 0
                 for root_path, dirs, files in os.walk(temp_dir):
                     self.log(f"Checking directory: {root_path} with {len(files)} files")
 
                     for file in files:
-                        # Skip config files and logs
-                        if file in ['photorec.cfg', 'photorec.log', 'report.xml']:
+                        # Skip log files and system files
+                        if file in ['audit.txt', 'photorec_commands.txt'] or file.startswith('.'):
                             continue
 
-                        # Look for recovered files (photorec creates files with various patterns)
-                        if (file.startswith('f') and any(c.isdigit() for c in file)) or \
-                        file.endswith(('.jpg', '.jpeg', '.png', '.gif', '.pdf', '.txt', '.doc', '.docx', '.mp3', '.mp4', '.avi', '.zip')):
+                        filepath = os.path.join(root_path, file)
 
-                            filepath = os.path.join(root_path, file)
+                        try:
+                            stat_info = os.stat(filepath)
+
+                            # Skip very small files (likely false positives)
+                            if stat_info.st_size < 100:
+                                continue
+
                             file_count += 1
 
+                            # Format size
+                            size_bytes = stat_info.st_size
+                            if size_bytes == 0:
+                                size = "0B"
+                            else:
+                                size_names = ["B", "KB", "MB", "GB", "TB"]
+                                i = 0
+                                while size_bytes >= 1024 and i < len(size_names) - 1:
+                                    size_bytes /= 1024.0
+                                    i += 1
+                                size = f"{size_bytes:.1f}{size_names[i]}"
+
+                            # Detect file type
                             try:
-                                # Get file info
-                                stat_info = os.stat(filepath)
+                                type_result = subprocess.run(['file', '--mime-type', filepath],
+                                                    capture_output=True, text=True, check=True)
+                                mime_type = type_result.stdout.split(':')[1].strip()
 
-                                # Format size inline
-                                size_bytes = stat_info.st_size
-                                if size_bytes == 0:
-                                    size = "0B"
-                                else:
-                                    size_names = ["B", "KB", "MB", "GB", "TB"]
-                                    i = 0
-                                    while size_bytes >= 1024 and i < len(size_names) - 1:
-                                        size_bytes /= 1024.0
-                                        i += 1
-                                    size = f"{size_bytes:.1f}{size_names[i]}"
+                                type_mapping = {
+                                    'application/pdf': 'PDF',
+                                    'image/jpeg': 'JPEG Image',
+                                    'image/png': 'PNG Image',
+                                    'image/gif': 'GIF Image',
+                                    'text/plain': 'Text File',
+                                    'text/html': 'HTML File',
+                                    'application/msword': 'Word Document',
+                                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word Document',
+                                    'application/zip': 'ZIP Archive',
+                                    'video/mp4': 'MP4 Video',
+                                    'video/x-msvideo': 'AVI Video',
+                                    'audio/mpeg': 'MP3 Audio',
+                                    'audio/wav': 'WAV Audio',
+                                    'application/octet-stream': 'Binary File'
+                                }
 
-                                # Detect file type inline
-                                try:
-                                    type_result = subprocess.run(['file', '--mime-type', filepath],
-                                                        capture_output=True, text=True, check=True)
-                                    mime_type = type_result.stdout.split(':')[1].strip()
+                                file_type = type_mapping.get(mime_type, mime_type)
+                            except Exception:
+                                # Fallback to extension-based detection
+                                ext = os.path.splitext(file)[1].lower()
+                                ext_mapping = {
+                                    '.jpg': 'JPEG Image', '.jpeg': 'JPEG Image',
+                                    '.png': 'PNG Image', '.gif': 'GIF Image',
+                                    '.pdf': 'PDF', '.txt': 'Text File', '.htm': 'HTML File', '.html': 'HTML File',
+                                    '.doc': 'Word Document', '.docx': 'Word Document',
+                                    '.mp3': 'MP3 Audio', '.wav': 'WAV Audio',
+                                    '.mp4': 'MP4 Video', '.avi': 'AVI Video',
+                                    '.zip': 'ZIP Archive', '.bin': 'Binary File'
+                                }
+                                file_type = ext_mapping.get(ext, "Unknown")
 
-                                    # Map common MIME types to user-friendly names
-                                    type_mapping = {
-                                        'application/pdf': 'PDF',
-                                        'image/jpeg': 'JPEG Image',
-                                        'image/png': 'PNG Image',
-                                        'image/gif': 'GIF Image',
-                                        'text/plain': 'Text File',
-                                        'application/msword': 'Word Document',
-                                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word Document',
-                                        'application/zip': 'ZIP Archive',
-                                        'video/mp4': 'MP4 Video',
-                                        'video/x-msvideo': 'AVI Video',
-                                        'audio/mpeg': 'MP3 Audio',
-                                        'audio/wav': 'WAV Audio'
-                                    }
+                            # Get original filename
+                            original_name = None
+                            try:
+                                if file_type == 'PDF':
+                                    pdf_result = subprocess.run(['pdfinfo', filepath],
+                                                        capture_output=True, text=True)
+                                    for line in pdf_result.stdout.split('\n'):
+                                        if line.startswith('Title:'):
+                                            title = line.split(':', 1)[1].strip()
+                                            if title and title not in ['Untitled', '']:
+                                                original_name = f"{title}.pdf"
+                                                break
 
-                                    file_type = type_mapping.get(mime_type, mime_type)
-                                except Exception:
-                                    # Fallback to extension-based detection
-                                    ext = os.path.splitext(file)[1].lower()
-                                    ext_mapping = {
-                                        '.jpg': 'JPEG Image', '.jpeg': 'JPEG Image',
-                                        '.png': 'PNG Image', '.gif': 'GIF Image',
-                                        '.pdf': 'PDF', '.txt': 'Text File',
-                                        '.doc': 'Word Document', '.docx': 'Word Document',
-                                        '.mp3': 'MP3 Audio', '.wav': 'WAV Audio',
-                                        '.mp4': 'MP4 Video', '.avi': 'AVI Video',
-                                        '.zip': 'ZIP Archive'
-                                    }
-                                    file_type = ext_mapping.get(ext, "Unknown")
-
-                                # Get original filename inline
-                                original_name = None
-                                try:
-                                    # For PDF files, try to extract title
-                                    if file_type == 'PDF':
-                                        pdf_result = subprocess.run(['pdfinfo', filepath],
-                                                            capture_output=True, text=True)
-                                        for line in pdf_result.stdout.split('\n'):
-                                            if line.startswith('Title:'):
-                                                title = line.split(':', 1)[1].strip()
-                                                if title and title not in ['Untitled', '']:
-                                                    original_name = f"{title}.pdf"
+                                elif 'Image' in file_type:
+                                    exif_result = subprocess.run(['exiftool', '-FileName', filepath],
+                                                        capture_output=True, text=True)
+                                    if exif_result.returncode == 0:
+                                        for line in exif_result.stdout.split('\n'):
+                                            if 'File Name' in line:
+                                                filename = line.split(':', 1)[1].strip()
+                                                if filename:
+                                                    original_name = filename
                                                     break
+                            except Exception:
+                                pass
 
-                                    # For image files, check EXIF data
-                                    elif 'Image' in file_type:
-                                        exif_result = subprocess.run(['exiftool', '-FileName', filepath],
-                                                            capture_output=True, text=True)
-                                        if exif_result.returncode == 0:
-                                            for line in exif_result.stdout.split('\n'):
-                                                if 'File Name' in line:
-                                                    filename = line.split(':', 1)[1].strip()
-                                                    if filename:
-                                                        original_name = filename
-                                                        break
-                                except Exception:
-                                    pass  # Fall back to generated name
+                            confidence = "High" if file_type != "Unknown" else "Medium"
 
-                                # Determine confidence based on file type detection
-                                confidence = "High" if file_type != "Unknown" else "Low"
+                            recovered_files.append({
+                                'filename': original_name or file,
+                                'size': size,
+                                'type': file_type,
+                                'confidence': confidence,
+                                'path': filepath,
+                                'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
+                            })
 
-                                recovered_files.append({
-                                    'filename': original_name or file,
-                                    'size': size,
-                                    'type': file_type,
-                                    'confidence': confidence,
-                                    'path': filepath,
-                                    'modified': datetime.fromtimestamp(stat_info.st_mtime).strftime('%Y-%m-%d %H:%M:%S')
-                                })
-
-                            except Exception as e:
-                                self.log(f"Error processing file {file}: {e}", "WARNING")
+                        except Exception as file_error:
+                            self.log(f"Error processing file {file}: {file_error}", "WARNING")
 
                 self.log(f"Total files found in scan: {file_count}")
 
@@ -534,9 +517,9 @@ class ForensicDataRecovery:
             # Keep temp directory for recovery
             self.temp_recovery_dir = temp_dir
 
-        except Exception as e:
-            self.log(f"Scan error: {e}", "ERROR")
-            self.root.after(0, lambda: messagebox.showerror("Scan Error", str(e)))
+        except Exception as scan_error:
+            self.log(f"Scan error: {scan_error}", "ERROR")
+            self.root.after(0, lambda: messagebox.showerror("Scan Error", str(scan_error)))
 
     def populate_file_list(self, files):
         """Populate the file list display"""
@@ -683,7 +666,8 @@ class ForensicDataRecovery:
                     'filename': values[1],
                     'path': file_path,
                     'size': values[2],
-                    'type': values[3]
+                    'type': values[3],
+                    'confidence': values[4] if len(values) > 4 else 'Unknown'  # Fix missing confidence
                 })
 
         if not selected_files:
@@ -701,8 +685,10 @@ class ForensicDataRecovery:
 
             threading.Thread(target=self.perform_recovery, args=(selected_files,), daemon=True).start()
 
-        except Exception as e:
-            messagebox.showerror("Recovery Error", f"Failed to create recovery folder: {e}")
+        except Exception as recovery_error:
+            self.log(f"Recovery folder creation error: {recovery_error}", "ERROR")
+            messagebox.showerror("Recovery Error", f"Failed to create recovery folder: {recovery_error}")
+
 
     def perform_recovery(self, selected_files):
         """Perform the actual file recovery """
