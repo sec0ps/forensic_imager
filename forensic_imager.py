@@ -578,10 +578,6 @@ class ForensicImager:
             self.log(f"Error generating imaging log: {e}", "ERROR")
             return None
 
-    def generate_report(self):
-        """Generate comprehensive imaging report (legacy function for compatibility)"""
-        return self.generate_imaging_log()
-
     def run_safety_checks(self):
         """Perform safety checks before imaging"""
         self.log("Performing pre-imaging safety checks...")
