@@ -311,79 +311,11 @@ class ForensicImager:
         }
 
     def create_image_dd(self, output_path=None):
-        """Create image using dd method"""
-        if output_path is None:
-            output_path = self.destination_device['path']
-
-        cmd = [
-            'dd',
-            f"if={self.source_device['path']}",
-            f"of={output_path}",
-            'bs=64K',
-            'status=progress',
-            'conv=noerror,sync'
-        ]
-
-        self.command_used = ' '.join(cmd)
-        self.log(f"Starting DD imaging: {self.command_used}")
-        self.log("This may take several hours depending on drive size...")
-
-        self.start_time = datetime.now()
-        start_time_epoch = time.time()
-        try:
-            result = subprocess.run(cmd, check=True)
-            end_time_epoch = time.time()
-            self.end_time = datetime.now()
-            self.duration = end_time_epoch - start_time_epoch
-            self.log(f"DD imaging completed successfully in {self.duration:.2f} seconds")
-            return True
-        except subprocess.CalledProcessError as e:
-            self.end_time = datetime.now()
-            self.duration = time.time() - start_time_epoch
-            self.log(f"DD imaging failed: {e}", "ERROR")
-            return False
-
-    def create_image_ddrescue(self, output_path=None, log_path=None):
-        """Create image using ddrescue method"""
-        if output_path is None:
-            output_path = self.destination_device['path']
-        if log_path is None:
-            log_path = f"/tmp/ddrescue_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
-
-        cmd = [
-            'ddrescue',
-            self.source_device['path'],
-            output_path,
-            log_path
-        ]
-
-        self.command_used = ' '.join(cmd)
-        self.log(f"Starting DDrescue imaging: {self.command_used}")
-        self.log(f"Recovery log will be saved to: {log_path}")
-        self.log("This may take several hours depending on drive condition...")
-
-        self.start_time = datetime.now()
-        start_time_epoch = time.time()
-        try:
-            result = subprocess.run(cmd, check=True)
-            end_time_epoch = time.time()
-            self.end_time = datetime.now()
-            self.duration = end_time_epoch - start_time_epoch
-            self.log(f"DDrescue imaging completed successfully in {self.duration:.2f} seconds")
-            self.log(f"Recovery log saved to: {log_path}")
-            return True
-        except subprocess.CalledProcessError as e:
-            self.end_time = datetime.now()
-            self.duration = time.time() - start_time_epoch
-            self.log(f"DDrescue imaging failed: {e}", "ERROR")
-            return False
-
-    def create_image_dd_pv(self, output_path=None):
         """Create image using dd with pv for progress monitoring"""
         if output_path is None:
             output_path = self.destination_device['path']
 
-        # Use shell pipeline for pv | dd
+        # Use shell pipeline for pv | dd (now default for dd method)
         cmd = f"pv {self.source_device['path']} | dd of={output_path} bs=64K conv=noerror,sync"
 
         self.command_used = cmd
@@ -403,6 +335,37 @@ class ForensicImager:
             self.end_time = datetime.now()
             self.duration = time.time() - start_time_epoch
             self.log(f"DD+PV imaging failed: {e}", "ERROR")
+            return False
+
+    def create_image_ddrescue(self, output_path=None, log_path=None):
+        """Create image using ddrescue with pv for progress monitoring"""
+        if output_path is None:
+            output_path = self.destination_device['path']
+        if log_path is None:
+            log_path = f"/tmp/ddrescue_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+
+        # Use pv to monitor ddrescue progress
+        cmd = f"pv {self.source_device['path']} | ddrescue --force --input-position=- /dev/stdin {output_path} {log_path}"
+
+        self.command_used = cmd
+        self.log(f"Starting DDrescue+PV imaging: {cmd}")
+        self.log(f"Recovery log will be saved to: {log_path}")
+        self.log("This may take several hours depending on drive condition...")
+
+        self.start_time = datetime.now()
+        start_time_epoch = time.time()
+        try:
+            result = subprocess.run(cmd, shell=True, check=True)
+            end_time_epoch = time.time()
+            self.end_time = datetime.now()
+            self.duration = end_time_epoch - start_time_epoch
+            self.log(f"DDrescue+PV imaging completed successfully in {self.duration:.2f} seconds")
+            self.log(f"Recovery log saved to: {log_path}")
+            return True
+        except subprocess.CalledProcessError as e:
+            self.end_time = datetime.now()
+            self.duration = time.time() - start_time_epoch
+            self.log(f"DDrescue+PV imaging failed: {e}", "ERROR")
             return False
 
     def calculate_checksum(self, device_path, algorithm='sha256'):
@@ -470,9 +433,8 @@ class ForensicImager:
     def select_imaging_method(self):
         """Allow user to select imaging method"""
         methods = {
-            '1': 'dd - Standard method for healthy drives',
-            '2': 'ddrescue - Recovery method for damaged drives',
-            '3': 'dd with pv - Standard method with enhanced progress monitoring'
+            '1': 'dd with pv - Standard method with progress monitoring',
+            '2': 'ddrescue with pv - Recovery method with progress monitoring'
         }
 
         print("\n" + "="*50)
@@ -484,7 +446,7 @@ class ForensicImager:
 
         while True:
             try:
-                choice = input("Select imaging method (1-3): ").strip()
+                choice = input("Select imaging method (1-2): ").strip()
                 if choice in methods:
                     method_name = methods[choice].split(' - ')[0]
                     print(f"Selected method: {methods[choice]}")
@@ -492,7 +454,7 @@ class ForensicImager:
                     if confirm not in ['n', 'no']:
                         return choice, method_name
                 else:
-                    print("Please enter 1, 2, or 3")
+                    print("Please enter 1 or 2")
             except KeyboardInterrupt:
                 print("\nOperation cancelled")
                 sys.exit(0)
@@ -662,7 +624,7 @@ class ForensicImager:
         # Select imaging method
         method_choice, self.imaging_method = self.select_imaging_method()
 
-        # Final confirmation - replaced PROCEED with Y/n
+        # Final confirmation
         print("\n" + "="*60)
         print("FINAL CONFIRMATION")
         print("="*60)
@@ -679,16 +641,14 @@ class ForensicImager:
             self.log("Operation cancelled by user")
             sys.exit(0)
 
-        # Perform imaging
+        # Perform imaging - only 2 options now
         self.log("Starting forensic imaging process...")
         imaging_success = False
 
-        if method_choice == '1':  # dd
+        if method_choice == '1':  # dd with pv
             imaging_success = self.create_image_dd()
-        elif method_choice == '2':  # ddrescue
+        elif method_choice == '2':  # ddrescue with pv
             imaging_success = self.create_image_ddrescue()
-        elif method_choice == '3':  # dd with pv
-            imaging_success = self.create_image_dd_pv()
 
         if not imaging_success:
             self.log("Imaging process failed", "ERROR")
