@@ -226,8 +226,8 @@ class ForensicImager:
                     # Warning for mounted devices
                     if selected_device['mountpoint'] != 'Not mounted':
                         print(f"WARNING: Device {selected_device['path']} is currently mounted!")
-                        confirm = input("Continue anyway? (yes/no): ").strip().lower()
-                        if confirm not in ['yes', 'y']:
+                        confirm = input("Continue anyway? (Y/n): ").strip().lower()
+                        if confirm in ['n', 'no']:
                             continue
 
                     # Confirmation
@@ -236,8 +236,8 @@ class ForensicImager:
                     print(f"Size: {selected_device['size']}")
                     print(f"Serial: {selected_device['serial']}")
 
-                    confirm = input(f"Confirm this as {device_type} device? (yes/no): ").strip().lower()
-                    if confirm in ['yes', 'y']:
+                    confirm = input(f"Confirm this as {device_type} device? (Y/n): ").strip().lower()
+                    if confirm not in ['n', 'no']:
                         return selected_device
                 else:
                     print(f"Please enter a number between 1 and {len(devices)}")
@@ -249,48 +249,53 @@ class ForensicImager:
                 sys.exit(0)
 
     def unmount_device(self, device_path):
-        """Unmount all partitions on a device"""
+        """Unmount all partitions on a device with enhanced verification"""
+        self.log(f"Unmounting all partitions on {device_path}")
+
+        # First, find all mounted partitions for this device
         try:
-            self.log(f"Unmounting all partitions on {device_path}")
-            result = subprocess.run(['umount', f"{device_path}*"],
-                                  capture_output=True, text=True)
-            if result.returncode == 0:
-                self.log(f"Successfully unmounted {device_path}")
+            mount_result = subprocess.run(['mount'], capture_output=True, text=True, check=True)
+            mounted_partitions = []
+
+            for line in mount_result.stdout.split('\n'):
+                if device_path in line:
+                    # Extract the device partition (first field)
+                    partition = line.split()[0]
+                    mounted_partitions.append(partition)
+
+            if mounted_partitions:
+                self.log(f"Found mounted partitions: {mounted_partitions}")
+
+                # Unmount each partition individually
+                for partition in mounted_partitions:
+                    try:
+                        umount_result = subprocess.run(['umount', '-f', partition],
+                                                    capture_output=True, text=True, check=True)
+                        self.log(f"Successfully force unmounted {partition}")
+                    except subprocess.CalledProcessError as e:
+                        self.log(f"Failed to unmount {partition}: {e.stderr.strip()}", "ERROR")
+                        return False
+
+            # Verify no partitions are still mounted
+            final_check = subprocess.run(['mount'], capture_output=True, text=True, check=True)
+            still_mounted = []
+            for line in final_check.stdout.split('\n'):
+                if device_path in line:
+                    still_mounted.append(line.split()[0])
+
+            if still_mounted:
+                self.log(f"ERROR: Partitions still mounted after unmount: {still_mounted}", "ERROR")
+                return False
             else:
-                # This is often normal (partitions not mounted)
-                self.log(f"Unmount result for {device_path}: {result.stderr.strip()}", "INFO")
+                self.log(f"Verified: All partitions on {device_path} are unmounted")
+                return True
+
+        except subprocess.CalledProcessError as e:
+            self.log(f"Error checking mount status: {e}", "ERROR")
+            return False
         except Exception as e:
-            self.log(f"Error unmounting {device_path}: {e}", "WARNING")
-
-    def select_imaging_method(self):
-        """Allow user to select imaging method"""
-        methods = {
-            '1': 'dd - Standard method for healthy drives',
-            '2': 'ddrescue - Recovery method for damaged drives',
-            '3': 'dd with pv - Standard method with enhanced progress monitoring'
-        }
-
-        print("\n" + "="*50)
-        print("SELECT IMAGING METHOD")
-        print("="*50)
-        for key, value in methods.items():
-            print(f"{key}. {value}")
-        print("-"*50)
-
-        while True:
-            try:
-                choice = input("Select imaging method (1-3): ").strip()
-                if choice in methods:
-                    method_name = methods[choice].split(' - ')[0]
-                    print(f"Selected method: {methods[choice]}")
-                    confirm = input("Confirm selection? (yes/no): ").strip().lower()
-                    if confirm in ['yes', 'y']:
-                        return choice, method_name
-                else:
-                    print("Please enter 1, 2, or 3")
-            except KeyboardInterrupt:
-                print("\nOperation cancelled")
-                sys.exit(0)
+            self.log(f"Error unmounting {device_path}: {e}", "ERROR")
+            return False
 
     def get_case_information(self):
         """Collect case information for documentation"""
@@ -462,6 +467,36 @@ class ForensicImager:
         else:
             return f"{seconds}s"
 
+    def select_imaging_method(self):
+        """Allow user to select imaging method"""
+        methods = {
+            '1': 'dd - Standard method for healthy drives',
+            '2': 'ddrescue - Recovery method for damaged drives',
+            '3': 'dd with pv - Standard method with enhanced progress monitoring'
+        }
+
+        print("\n" + "="*50)
+        print("SELECT IMAGING METHOD")
+        print("="*50)
+        for key, value in methods.items():
+            print(f"{key}. {value}")
+        print("-"*50)
+
+        while True:
+            try:
+                choice = input("Select imaging method (1-3): ").strip()
+                if choice in methods:
+                    method_name = methods[choice].split(' - ')[0]
+                    print(f"Selected method: {methods[choice]}")
+                    confirm = input("Confirm selection? (Y/n): ").strip().lower()
+                    if confirm not in ['n', 'no']:
+                        return choice, method_name
+                else:
+                    print("Please enter 1, 2, or 3")
+            except KeyboardInterrupt:
+                print("\nOperation cancelled")
+                sys.exit(0)
+
     def generate_imaging_log(self):
         """Generate official imaging log using the standardized template"""
         log_filename = f"imaging_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
@@ -619,14 +654,19 @@ class ForensicImager:
             self.log("Safety checks failed. Aborting operation.", "ERROR")
             sys.exit(1)
 
-        # Unmount devices
-        self.unmount_device(self.source_device['path'])
-        self.unmount_device(self.destination_device['path'])
+        # Enhanced unmounting with verification
+        if not self.unmount_device(self.source_device['path']):
+            self.log("Failed to unmount source device. Aborting for safety.", "ERROR")
+            sys.exit(1)
+
+        if not self.unmount_device(self.destination_device['path']):
+            self.log("Failed to unmount destination device. Aborting for safety.", "ERROR")
+            sys.exit(1)
 
         # Select imaging method
         method_choice, self.imaging_method = self.select_imaging_method()
 
-        # Final confirmation
+        # Final confirmation - replaced PROCEED with Y/n
         print("\n" + "="*60)
         print("FINAL CONFIRMATION")
         print("="*60)
@@ -638,8 +678,8 @@ class ForensicImager:
         print("WARNING: This will OVERWRITE ALL DATA on the destination device!")
         print("="*60)
 
-        final_confirm = input("Type 'PROCEED' to continue with imaging: ").strip()
-        if final_confirm != 'PROCEED':
+        final_confirm = input("Proceed with imaging? (Y/n): ").strip().lower()
+        if final_confirm in ['n', 'no']:
             self.log("Operation cancelled by user")
             sys.exit(0)
 
