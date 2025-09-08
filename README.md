@@ -18,8 +18,6 @@ GUI-based data recovery tool for extracting deleted files and recovering data fr
   - DD with PV - Standard imaging with real-time progress
   - DDrescue with PV - Recovery imaging for damaged drives
 - **SHA-256 integrity verification** - Automatic checksum validation
-- **Professional documentation** - Generates standardized forensic logs
-- **Enhanced safety checks** - Prevents data loss with verification steps
 - **Smart unmounting** - Automatically handles mounted filesystems
 
 ### Data Recovery Tool
